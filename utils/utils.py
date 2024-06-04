@@ -3,13 +3,14 @@ import numpy as np
 import torch
 
 
-def plot_samples(samples, epoch):
-    fig, axes = plt.subplots(4, 4, figsize=(5, 5))
+def plot_samples(samples, nrows=4, ncols=4, epoch=None):
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5, 5))
     for i, sample in enumerate(samples):
-        ax = axes[i // 4, i % 4]
+        ax = axes[i // nrows, i % ncols]
         ax.imshow(sample[0], cmap='gray')
         ax.axis('off')
-    plt.suptitle(f'Epoch {epoch}')
+    if epoch is not None:
+        plt.suptitle(f'Epoch {epoch}')
     plt.show()
 
 

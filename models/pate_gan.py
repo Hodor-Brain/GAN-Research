@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
+from torchmetrics.image.inception import InceptionScore
+from torchmetrics.image.fid import FrechetInceptionDistance
 
 
 class PATE_GAN:
@@ -125,3 +127,42 @@ class PATE_GAN:
                 history['samples'].append(samples)
 
         return history
+
+    def generate(self, num_samples, device='cpu'):
+        noise = torch.randn(num_samples, self.latent_dim, device=device)
+        samples = self.generator(noise).cpu().detach().numpy()
+        return samples
+
+    def load(self, path='saves', name='model'):
+        self.generator.load_state_dict(torch.load(f'{path}/{name}_generator.pth'))
+        self.student_discriminator.load_state_dict(torch.load(f'{path}/{name}_discriminator.pth'))
+        for i in range(self.num_teachers):
+            self.teacher_models[i].load_state_dict(torch.load(f'{path}/{name}_teacher_{i}.pth'))
+        history = np.load(f'{path}/{name}_history.npy', allow_pickle=True).item()
+        return history
+
+    def calculate_is(self, num_samples, device='cpu', feature='logits_unbiased', splits=10, **kwargs):
+        noise = torch.randn(num_samples, self.latent_dim, device=device)
+        fake_images = self.generator(noise)
+        fake_images = (fake_images * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
+        fake_images = fake_images.repeat(1, 3, 1, 1)
+        is_metric = InceptionScore(feature=feature, splits=splits, **kwargs).to(device)
+        is_metric.update(fake_images)
+        is_score = is_metric.compute()
+        return is_score
+
+    def calculate_fid(self, real_images, num_samples, device='cpu', feature=2048, reset_real_features=True,
+                      normalize=True, **kwargs):
+        noise = torch.randn(num_samples, self.latent_dim, device=device)
+        fake_images = self.generator(noise)
+        if normalize:
+            fake_images = (fake_images * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
+            real_images = (real_images * 127.5 + 127.5).clamp(0, 255).to(torch.uint8)
+        fake_images = fake_images.repeat(1, 3, 1, 1)
+        real_images = real_images.repeat(1, 3, 1, 1)
+        fid_metric = FrechetInceptionDistance(feature=feature, reset_real_features=reset_real_features,
+                                              normalize=normalize, **kwargs).to(device)
+        fid_metric.update(real_images, real=True)
+        fid_metric.update(fake_images, real=False)
+        fid_score = fid_metric.compute()
+        return fid_score.item()
